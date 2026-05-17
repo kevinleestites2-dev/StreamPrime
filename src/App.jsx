@@ -4,24 +4,27 @@ import ResultsGrid from './components/ResultsGrid';
 import Player from './components/Player';
 import EpisodePicker from './components/EpisodePicker';
 import BrowseRow from './components/BrowseRow';
-import { Film, Tv, LayoutGrid, Zap } from 'lucide-react';
+import HeroBanner from './components/HeroBanner';
+import { Film, Tv, Zap, LayoutGrid } from 'lucide-react';
 import { BROWSE_ROW_COUNT } from './api';
 
 export default function App() {
-  const [view, setView] = useState('home'); // home, search, player, episodes
-  const [query, setQuery] = useState('');
-  const [results, setResults] = useState([]);
+  const [view, setView]               = useState('home'); // home | search | player | episodes
+  const [query, setQuery]             = useState('');
   const [selectedMedia, setSelectedMedia] = useState(null);
-  const [mode, setMode] = useState('all');
+  const [mode, setMode]               = useState('all');  // all | movie | tv | anime
 
   const handleSearch = (q) => {
     setQuery(q);
-    setView('search');
+    if (q.trim()) setView('search');
+    else setView('home');
   };
 
   const openMedia = (item) => {
     setSelectedMedia(item);
-    if (item.Type === 'series' || item.Type === 'anime') {
+    const isTV    = item.media_type === 'tv';
+    const isAnime = item.media_type === 'anime';
+    if (isTV || isAnime) {
       setView('episodes');
     } else {
       setView('player');
@@ -29,131 +32,127 @@ export default function App() {
   };
 
   const playEpisode = (season, episode) => {
-    setSelectedMedia({ ...selectedMedia, season, episode });
+    setSelectedMedia(prev => ({ ...prev, season, episode }));
     setView('player');
+  };
+
+  const goHome = () => {
+    setView('home');
+    setQuery('');
+    setSelectedMedia(null);
   };
 
   return (
     <div className="min-h-screen flex flex-col bg-pantheon-black text-white selection:bg-pantheon-gold selection:text-black">
-      {/* Header */}
-      <header className="sticky top-0 z-50 bg-black/80 backdrop-blur-md border-b border-pantheon-gold/20 p-4 md:px-8 flex items-center justify-between">
-        <div
-          className="text-2xl font-black text-pantheon-gold glow-text cursor-pointer flex items-center gap-2"
-          onClick={() => setView('home')}
+      {/* ── Header ── */}
+      <header className="sticky top-0 z-50 bg-black/80 backdrop-blur-md border-b border-pantheon-gold/20 px-4 md:px-8 h-14 flex items-center justify-between gap-4">
+        <button
+          onClick={goHome}
+          className="text-xl font-black text-pantheon-gold tracking-widest uppercase shrink-0 hover:opacity-80 transition-opacity"
+          style={{ textShadow: '0 0 15px rgba(255,215,0,0.5)' }}
         >
-          <Zap className="fill-current" />
-          <span className="hidden sm:inline">StreamPrime 🔱</span>
-        </div>
+          ⚡ StreamPrime
+        </button>
 
-        <div className="hidden lg:flex gap-8 text-[10px] font-bold tracking-[0.2em] text-gray-500">
+        {/* Desktop mode tabs */}
+        <div className="hidden md:flex items-center gap-1 bg-black/60 border border-white/10 rounded-full px-1 py-1">
           {[
-            { id: 'all', label: 'ALL ACCESS', icon: <LayoutGrid size={14}/> },
-            { id: 'movie', label: 'CINEMA', icon: <Film size={14}/> },
-            { id: 'tv', label: 'SERIES', icon: <Tv size={14}/> },
-            { id: 'anime', label: 'ANIME', icon: <Zap size={14}/> },
+            { id: 'all',   label: 'All',    icon: <LayoutGrid size={13} /> },
+            { id: 'movie', label: 'Movies', icon: <Film size={13} /> },
+            { id: 'tv',    label: 'Series', icon: <Tv size={13} /> },
+            { id: 'anime', label: 'Anime',  icon: <Zap size={13} /> },
           ].map(m => (
             <button
               key={m.id}
-              onClick={() => { setMode(m.id); setView('home'); }}
-              className={`flex items-center gap-2 transition-colors ${mode === m.id ? 'text-pantheon-gold' : 'hover:text-white'}`}
+              onClick={() => { setMode(m.id); setView('home'); setQuery(''); }}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-black uppercase tracking-wider transition-all ${
+                mode === m.id
+                  ? 'bg-pantheon-gold text-black shadow-[0_0_10px_rgba(255,215,0,0.3)]'
+                  : 'text-gray-400 hover:text-white'
+              }`}
             >
-              {m.icon}
-              {m.label}
+              {m.icon}{m.label}
             </button>
           ))}
         </div>
 
-        <Search onSearch={handleSearch} />
+        {/* Search bar */}
+        <div className="flex-1 max-w-md">
+          <Search onSearch={handleSearch} />
+        </div>
       </header>
 
-      {/* Main Content */}
-      <main className="flex-1 relative">
-        <div className="ember-glow absolute inset-0 pointer-events-none opacity-30" />
+      {/* ── Main content ── */}
+      <main className="flex-1 overflow-y-auto px-4 md:px-8 py-6">
 
-        {/* ─── HOME: Netflix-style browse ─── */}
+        {/* HOME */}
         {view === 'home' && (
-          <div className="animate-in fade-in duration-500">
-            {/* Hero banner */}
-            <div className="relative flex flex-col items-center justify-center py-16 px-6 text-center bg-gradient-to-b from-black via-pantheon-black to-transparent">
-              <h2 className="text-pantheon-gold font-bold tracking-[0.5em] text-xs uppercase mb-3">The Pantheon Presents</h2>
-              <h1 className="text-5xl md:text-7xl font-black glow-text leading-tight mb-4">FORGE OF<br/>CINEMA</h1>
-              <p className="text-gray-500 uppercase tracking-[0.25em] max-w-md mx-auto text-[10px] leading-loose mb-6">
-                Secure connection established. Tap anything to watch.
-              </p>
-              <button
-                onClick={() => document.querySelector('input')?.focus()}
-                className="bg-pantheon-gold text-black px-8 py-3 rounded-full font-black hover:scale-105 transition-all shadow-[0_0_30px_rgba(255,215,0,0.3)] hover:shadow-[0_0_50px_rgba(255,215,0,0.5)] uppercase tracking-widest text-xs"
-              >
-                Search the Vault
-              </button>
-            </div>
-
+          <div>
+            {/* Hero banner — only on "all" or "movie" mode */}
+            {(mode === 'all' || mode === 'movie') && (
+              <HeroBanner onSelect={openMedia} />
+            )}
             {/* Browse rows */}
-            <div className="px-4 md:px-8 pb-8">
-              {[...Array(BROWSE_ROW_COUNT)].map((_, i) => (
-                <BrowseRow key={i} rowIndex={i} onSelect={openMedia} />
-              ))}
-            </div>
+            {Array.from({ length: BROWSE_ROW_COUNT }, (_, i) => (
+              <BrowseRow key={i} rowIndex={i} onSelect={openMedia} />
+            ))}
           </div>
         )}
 
-        {/* ─── SEARCH RESULTS ─── */}
+        {/* SEARCH RESULTS */}
         {view === 'search' && (
-          <div className="p-6 md:p-10 max-w-7xl mx-auto space-y-8 animate-in fade-in duration-500">
-            <div className="flex items-center justify-between">
-              <h2 className="text-xl font-bold uppercase tracking-widest border-l-4 border-pantheon-gold pl-4">
-                Results for <span className="text-pantheon-gold">"{query}"</span>
-              </h2>
-              <div className="flex gap-2">
-                {['all', 'movie', 'tv', 'anime'].map(m => (
-                  <button
-                    key={m}
-                    onClick={() => setMode(m)}
-                    className={`px-3 py-1 rounded-full text-[10px] font-bold border transition-all ${mode === m ? 'bg-pantheon-gold text-black border-pantheon-gold' : 'border-gray-800 text-gray-500 hover:border-gray-600'}`}
-                  >
-                    {m.toUpperCase()}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <ResultsGrid query={query} mode={mode} onSelect={openMedia} />
-          </div>
+          <ResultsGrid
+            query={query}
+            mode={mode}
+            onSelect={openMedia}
+          />
         )}
 
-        {/* ─── EPISODE PICKER ─── */}
-        {view === 'episodes' && (
-          <div className="p-6 md:p-10 max-w-7xl mx-auto">
-            <EpisodePicker
-              media={selectedMedia}
-              onBack={() => setView(query ? 'search' : 'home')}
-              onPlay={playEpisode}
-            />
-          </div>
+        {/* EPISODE PICKER */}
+        {view === 'episodes' && selectedMedia && (
+          <EpisodePicker
+            media={selectedMedia}
+            onBack={() => setView(query ? 'search' : 'home')}
+            onPlay={playEpisode}
+          />
         )}
 
-        {/* ─── PLAYER ─── */}
-        {view === 'player' && (
-          <div className="p-6 md:p-10 max-w-7xl mx-auto">
-            <Player
-              media={selectedMedia}
-              onBack={() => {
-                if (selectedMedia.Type === 'series' || selectedMedia.Type === 'anime') {
-                  setView('episodes');
-                } else {
-                  setView(query ? 'search' : 'home');
-                }
-              }}
-            />
-          </div>
+        {/* PLAYER */}
+        {view === 'player' && selectedMedia && (
+          <Player
+            media={selectedMedia}
+            onBack={() => {
+              if (selectedMedia.media_type === 'tv' || selectedMedia.media_type === 'anime') {
+                setView('episodes');
+              } else {
+                setView(query ? 'search' : 'home');
+              }
+            }}
+          />
         )}
       </main>
 
-      {/* Mobile Nav */}
-      <nav className="lg:hidden sticky bottom-0 z-50 bg-black/95 border-t border-pantheon-gold/20 flex justify-around p-4 backdrop-blur-xl">
-        <button onClick={() => { setMode('movie'); setView('home'); }} className={`flex flex-col items-center gap-1 ${mode === 'movie' && view === 'home' ? 'text-pantheon-gold' : 'text-gray-500'}`}><Film size={20}/><span className="text-[8px] font-bold">CINEMA</span></button>
-        <button onClick={() => { setMode('tv'); setView('home'); }} className={`flex flex-col items-center gap-1 ${mode === 'tv' && view === 'home' ? 'text-pantheon-gold' : 'text-gray-500'}`}><Tv size={20}/><span className="text-[8px] font-bold">SERIES</span></button>
-        <button onClick={() => { setMode('anime'); setView('home'); }} className={`flex flex-col items-center gap-1 ${mode === 'anime' && view === 'home' ? 'text-pantheon-gold' : 'text-gray-500'}`}><Zap size={20}/><span className="text-[8px] font-bold">ANIME</span></button>
-        <button onClick={() => { setMode('all'); setView('home'); }} className={`flex flex-col items-center gap-1 ${mode === 'all' && view === 'home' ? 'text-pantheon-gold' : 'text-gray-500'}`}><LayoutGrid size={20}/><span className="text-[8px] font-bold">ALL</span></button>
+      {/* ── Mobile Nav ── */}
+      <nav className="md:hidden sticky bottom-0 z-50 bg-black/95 border-t border-pantheon-gold/20 flex justify-around py-3 backdrop-blur-xl">
+        {[
+          { id: 'all',   label: 'All',    icon: <LayoutGrid size={18} /> },
+          { id: 'movie', label: 'Cinema', icon: <Film size={18} /> },
+          { id: 'tv',    label: 'Series', icon: <Tv size={18} /> },
+          { id: 'anime', label: 'Anime',  icon: <Zap size={18} /> },
+        ].map(m => (
+          <button
+            key={m.id}
+            onClick={() => { setMode(m.id); setView('home'); setQuery(''); }}
+            className={`flex flex-col items-center gap-0.5 transition-all ${
+              mode === m.id && view === 'home'
+                ? 'text-pantheon-gold scale-110'
+                : 'text-gray-600 hover:text-gray-400'
+            }`}
+          >
+            {m.icon}
+            <span className="text-[8px] font-black uppercase tracking-wider">{m.label}</span>
+          </button>
+        ))}
       </nav>
     </div>
   );
