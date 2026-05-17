@@ -28,6 +28,7 @@ jobs:
         run: npm install -g netlify-cli
 
       - name: Deploy to Netlify
-        run: netlify deploy --dir=dist --prod --site=fb850a8c-22fb-4964-84a4-e43186fa9736
+        run: netlify deploy --dir=dist --prod --no-color
         env:
           NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+          NETLIFY_SITE_ID: fb850a8c-22fb-4964-84a4-e43186fa9736
