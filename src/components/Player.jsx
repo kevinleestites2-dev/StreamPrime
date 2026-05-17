@@ -13,6 +13,7 @@ export default function Player({ media, onBack }) {
   const [embedSrc, setEmbedSrc]     = useState('');
   const [projector, setProjector]   = useState(false);
   const [flipped, setFlipped]       = useState(true);
+  const [srcIndex, setSrcIndex]     = useState(0);
   const wakeLockRef                 = useRef(null);
 
   // Projector Mode — request wake lock + fullscreen
@@ -54,11 +55,9 @@ export default function Player({ media, onBack }) {
       const s      = media.season   || 1;
       const ep     = media.episode  || 1;
 
-      // Try IMDb ID first if available, else TMDB ID
-      setEmbedSrc(imdbId
-        ? buildVidSrcUrl(imdbId, type, s, ep, true)
-        : buildVidSrcUrl(tmdbId, type, s, ep, false)
-      );
+      // Always use TMDB ID — 2embed handles it natively
+      setEmbedSrc(buildVidSrcUrl(tmdbId, type, s, ep));
+      setSrcIndex(0);
 
       setLoading(false);
     };
@@ -149,16 +148,36 @@ export default function Player({ media, onBack }) {
             <p className="text-gray-600 text-xs uppercase tracking-widest">Loading signal...</p>
           </div>
         )}
-        {/* Projector Mode Button */}
-        {!loading && embedSrc && (
+      </div>
+
+      {/* Player Controls — outside iframe so they're always tappable */}
+      {!loading && embedSrc && (
+        <div className="flex gap-3 flex-wrap">
+          <button
+            onClick={() => {
+              const type = isTV || isAnime ? 'tv' : 'movie';
+              const s = media.season || 1;
+              const ep = media.episode || 1;
+              if (srcIndex === 0) {
+                setEmbedSrc(buildVidSrcAlt(tmdbId, type, s, ep));
+                setSrcIndex(1);
+              } else {
+                setEmbedSrc(buildVidSrcUrl(tmdbId, type, s, ep));
+                setSrcIndex(0);
+              }
+            }}
+            className="bg-gray-900 text-gray-300 text-xs font-bold px-4 py-2 rounded-lg border border-white/10 hover:border-pantheon-gold/40 hover:text-pantheon-gold transition-all uppercase tracking-widest"
+          >
+            🔄 Try Another Source {srcIndex === 0 ? '(Alt)' : '(Main)'}
+          </button>
           <button
             onClick={enterProjector}
-            className="absolute bottom-3 right-3 bg-black/80 text-pantheon-gold text-xs font-black px-3 py-2 rounded-lg border border-pantheon-gold/40 backdrop-blur hover:bg-pantheon-gold hover:text-black transition-all uppercase tracking-widest z-10"
+            className="bg-gray-900 text-pantheon-gold text-xs font-black px-4 py-2 rounded-lg border border-pantheon-gold/40 hover:bg-pantheon-gold hover:text-black transition-all uppercase tracking-widest"
           >
-            📽 Projector
+            📽 Projector Mode
           </button>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* Metadata */}
       <div className="grid grid-cols-1 lg:grid-cols-[auto_1fr] gap-6">
