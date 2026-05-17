@@ -19,7 +19,8 @@ export default function App() {
 
   const openMedia = (item) => {
     setSelectedMedia(item);
-    if (item.media_type === 'tv' || item.type === 'ANIME') {
+    // OMDb uses Type: 'series' | 'movie' | 'episode', anime uses Type: 'anime'
+    if (item.Type === 'series' || item.Type === 'anime') {
       setView('episodes');
     } else {
       setView('player');
@@ -120,7 +121,7 @@ export default function App() {
           <Player 
             media={selectedMedia} 
             onBack={() => {
-              if (selectedMedia.media_type === 'tv' || selectedMedia.type === 'ANIME') {
+              if (selectedMedia.Type === 'series' || selectedMedia.Type === 'anime') {
                 setView('episodes');
               } else {
                 setView('search');
