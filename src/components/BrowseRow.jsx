@@ -1,9 +1,9 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { fetchBrowseRow } from '../api';
+import { fetchBrowseRow, posterUrl } from '../api';
 import { ChevronLeft, ChevronRight, Star } from 'lucide-react';
 
 export default function BrowseRow({ rowIndex, onSelect }) {
-  const [row, setRow] = useState({ label: '', items: [] });
+  const [row, setRow]       = useState({ label: '', items: [] });
   const [loading, setLoading] = useState(true);
   const scrollRef = useRef(null);
 
@@ -37,7 +37,6 @@ export default function BrowseRow({ rowIndex, onSelect }) {
 
   return (
     <div className="mb-10 group/row">
-      {/* Row header */}
       <div className="flex items-center justify-between mb-3 px-1">
         <h3 className="text-sm font-black tracking-[0.15em] uppercase text-white/90">
           {row.label}
@@ -58,14 +57,13 @@ export default function BrowseRow({ rowIndex, onSelect }) {
         </div>
       </div>
 
-      {/* Scrollable card strip */}
       <div
         ref={scrollRef}
         className="flex gap-4 overflow-x-auto scrollbar-hide pb-2"
         style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
       >
         {row.items.map((item) => (
-          <BrowseCard key={item.imdbID} item={item} onSelect={onSelect} />
+          <BrowseCard key={`${item.media_type}-${item.id}`} item={item} onSelect={onSelect} />
         ))}
       </div>
     </div>
@@ -74,22 +72,25 @@ export default function BrowseRow({ rowIndex, onSelect }) {
 
 function BrowseCard({ item, onSelect }) {
   const [hovered, setHovered] = useState(false);
-  const hasPoster = item.Poster && item.Poster !== 'N/A';
 
-  // Map to the shape the rest of the app expects
+  const isTV       = item.media_type === 'tv';
+  const title      = item.title || item.name || 'Untitled';
+  const year       = (item.release_date || item.first_air_date || '').slice(0, 4);
+  const rating     = item.vote_average ? item.vote_average.toFixed(1) : null;
+  const overview   = item.overview || '';
+  const imgUrl     = posterUrl(item.poster_path, 'w342');
+
   const handleClick = () => {
     onSelect({
-      imdbID: item.imdbID,
-      Title: item.Title,
-      Year: item.Year,
-      Type: item.Type,
-      Poster: item.Poster,
-      Plot: item.Plot,
-      Genre: item.Genre,
-      imdbRating: item.imdbRating,
-      Runtime: item.Runtime,
-      Actors: item.Actors,
-      Director: item.Director,
+      tmdbId:     item.id,
+      media_type: item.media_type,
+      title,
+      year,
+      rating,
+      overview,
+      poster_path:   item.poster_path,
+      backdrop_path: item.backdrop_path,
+      genre_ids:     item.genre_ids,
     });
   };
 
@@ -100,48 +101,56 @@ function BrowseCard({ item, onSelect }) {
       onMouseLeave={() => setHovered(false)}
       onClick={handleClick}
     >
-      {/* Poster */}
       <div className="relative rounded-xl overflow-hidden aspect-[2/3] bg-gray-900 border border-white/5 group-hover/card:border-pantheon-gold/60 transition-all duration-300 group-hover/card:scale-105 group-hover/card:shadow-[0_0_20px_rgba(255,215,0,0.2)]">
-        {hasPoster ? (
+        {imgUrl ? (
           <img
-            src={item.Poster}
-            alt={item.Title}
+            src={imgUrl}
+            alt={title}
             className="w-full h-full object-cover"
             loading="lazy"
           />
         ) : (
           <div className="w-full h-full flex items-center justify-center bg-gray-900">
-            <span className="text-3xl">🎬</span>
+            <span className="text-3xl">{isTV ? '📺' : '🎬'}</span>
           </div>
         )}
 
         {/* Hover overlay */}
         <div className={`absolute inset-0 bg-gradient-to-t from-black via-black/40 to-transparent flex flex-col justify-end p-3 transition-opacity duration-300 ${hovered ? 'opacity-100' : 'opacity-0'}`}>
-          <div className="flex items-center gap-1 text-pantheon-gold text-xs font-bold mb-1">
-            <Star size={10} className="fill-current" />
-            {item.imdbRating !== 'N/A' ? item.imdbRating : '?'}
-          </div>
+          {rating && (
+            <div className="flex items-center gap-1 text-pantheon-gold text-xs font-bold mb-1">
+              <Star size={10} className="fill-current" />
+              {rating}
+            </div>
+          )}
           <p className="text-white text-[10px] line-clamp-3 leading-relaxed opacity-80">
-            {item.Plot !== 'N/A' ? item.Plot?.slice(0, 80) + '...' : item.Genre}
+            {overview.slice(0, 90)}{overview.length > 90 ? '...' : ''}
           </p>
           <div className="mt-2 bg-pantheon-gold text-black text-[9px] font-black py-1 px-2 rounded-full text-center uppercase tracking-wider">
-            ▶ {item.Type === 'series' ? 'Watch Series' : item.Type === 'movie' ? 'Watch Now' : 'Watch'}
+            ▶ {isTV ? 'Watch Series' : 'Watch Now'}
           </div>
         </div>
 
         {/* Type badge */}
         <div className="absolute top-2 right-2">
-          <span className={`text-[8px] font-black px-1.5 py-0.5 rounded uppercase tracking-wider ${item.Type === 'series' ? 'bg-blue-500/80 text-white' : item.Type === 'movie' ? 'bg-pantheon-gold/80 text-black' : 'bg-purple-500/80 text-white'}`}>
-            {item.Type === 'series' ? 'TV' : item.Type === 'movie' ? 'FILM' : item.Type?.toUpperCase()}
+          <span className={`text-[8px] font-black px-1.5 py-0.5 rounded uppercase tracking-wider ${isTV ? 'bg-blue-500/80 text-white' : 'bg-pantheon-gold/80 text-black'}`}>
+            {isTV ? 'TV' : 'FILM'}
           </span>
         </div>
+
+        {/* Rating badge top-left */}
+        {rating && (
+          <div className="absolute top-2 left-2 bg-black/70 px-1.5 py-0.5 rounded text-[9px] font-bold text-pantheon-gold flex items-center gap-0.5">
+            <Star size={8} fill="currentColor" />
+            {rating}
+          </div>
+        )}
       </div>
 
-      {/* Title below card */}
       <p className="mt-2 text-[11px] font-bold text-gray-300 group-hover/card:text-pantheon-gold transition-colors truncate px-0.5">
-        {item.Title}
+        {title}
       </p>
-      <p className="text-[10px] text-gray-600">{item.Year}</p>
+      <p className="text-[10px] text-gray-600">{year}</p>
     </div>
   );
 }
