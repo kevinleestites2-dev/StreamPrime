@@ -24,11 +24,14 @@ jobs:
           VITE_TMDB_API_KEY: ${{ secrets.VITE_TMDB_API_KEY }}
           VITE_OMDB_API_KEY: ${{ secrets.VITE_OMDB_API_KEY }}
 
-      - name: Install Netlify CLI
-        run: npm install -g netlify-cli
+      - name: Zip dist
+        run: cd dist && zip -r ../dist.zip .
 
-      - name: Deploy to Netlify
-        run: netlify deploy --dir=dist --prod --no-color
-        env:
-          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
-          NETLIFY_SITE_ID: fb850a8c-22fb-4964-84a4-e43186fa9736
+      - name: Deploy to Netlify via API
+        run: |
+          curl -s -X POST \
+            -H "Authorization: Bearer ${{ secrets.NETLIFY_AUTH_TOKEN }}" \
+            -H "Content-Type: application/zip" \
+            --data-binary @dist.zip \
+            "https://api.netlify.com/api/v1/sites/fb850a8c-22fb-4964-84a4-e43186fa9736/deploys" \
+            | python3 -c "import json,sys; d=json.load(sys.stdin); print('Deploy ID:', d.get('id')); print('State:', d.get('state')); print('URL:', d.get('ssl_url') or d.get('url'))"
