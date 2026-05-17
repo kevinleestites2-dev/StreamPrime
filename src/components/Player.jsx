@@ -1,71 +1,207 @@
-import React from 'react';
-import { ArrowLeft, Share2 } from 'lucide-react';
-import { buildVidSrcUrl } from '../api';
+import React, { useEffect, useState } from 'react';
+import { ArrowLeft, Star, Play, Info } from 'lucide-react';
+import {
+  getMovieDetails, getTVDetails,
+  buildVidSrcUrl, buildVidSrcAlt,
+  getTrailerKey, posterUrl, backdropUrl,
+} from '../api';
 
 export default function Player({ media, onBack }) {
-  const isTV = media.Type === 'series' || media.Type === 'anime';
+  const [details, setDetails]   = useState(null);
+  const [loading, setLoading]   = useState(true);
+  const [showTrailer, setShowTrailer] = useState(false);
+  const [embedSrc, setEmbedSrc] = useState('');
 
-  // VidSrc supports both IMDb IDs and TMDB IDs — IMDb IDs work directly
-  const embedUrl = buildVidSrcUrl(media.imdbID, isTV ? 'tv' : 'movie', media.season || 1, media.episode || 1);
+  const isTV    = media.media_type === 'tv';
+  const isAnime = media.media_type === 'anime';
+  const tmdbId  = media.tmdbId;
+
+  useEffect(() => {
+    const load = async () => {
+      setLoading(true);
+      let d = null;
+      if (tmdbId && !isAnime) {
+        d = isTV ? await getTVDetails(tmdbId) : await getMovieDetails(tmdbId);
+      }
+      setDetails(d);
+
+      // Build primary embed URL — use TMDB ID directly (VidSrc supports it)
+      const imdbId = d?.external_ids?.imdb_id || d?.imdb_id;
+      const id     = imdbId || tmdbId;
+      const type   = isTV || isAnime ? 'tv' : 'movie';
+      const s      = media.season   || 1;
+      const ep     = media.episode  || 1;
+
+      // Try IMDb ID first if available, else TMDB ID
+      setEmbedSrc(imdbId
+        ? buildVidSrcUrl(imdbId, type, s, ep, true)
+        : buildVidSrcUrl(tmdbId, type, s, ep, false)
+      );
+
+      setLoading(false);
+    };
+    load();
+  }, [tmdbId, isTV, isAnime, media.season, media.episode]);
+
+  // Derived display values
+  const title       = media.title || (details?.title || details?.name) || 'Untitled';
+  const overview    = details?.overview || media.overview || '';
+  const rating      = details?.vote_average ? details.vote_average.toFixed(1) : media.rating;
+  const runtime     = details?.runtime || (details?.episode_run_time?.[0]);
+  const releaseDate = (details?.release_date || details?.first_air_date || media.year || '').slice(0, 4);
+  const genres      = details?.genres?.map(g => g.name) || [];
+  const cast        = details?.credits?.cast?.slice(0, 6) || [];
+  const trailerKey  = details?.videos ? getTrailerKey(details.videos) : null;
+  const backdropSrc = backdropUrl(details?.backdrop_path || media.backdrop_path, 'w1280');
+  const posterSrc   = posterUrl(details?.poster_path || media.poster_path, 'w342');
+  const tagline     = details?.tagline || '';
+  const numSeasons  = details?.number_of_seasons;
+  const numEpisodes = details?.number_of_episodes;
 
   return (
-    <div className="flex flex-col h-full space-y-4">
-      <div className="flex items-center justify-between">
-        <button
-          onClick={onBack}
-          className="flex items-center gap-2 text-gray-400 hover:text-pantheon-gold transition-colors"
-        >
-          <ArrowLeft size={20} />
-          <span className="uppercase tracking-widest text-sm font-bold">Return to Library</span>
-        </button>
-        <div className="flex gap-4">
-          <Share2 size={20} className="text-gray-400 cursor-pointer hover:text-white" />
-        </div>
-      </div>
+    <div className="flex flex-col space-y-6 max-w-7xl mx-auto">
+      {/* Back */}
+      <button
+        onClick={onBack}
+        className="flex items-center gap-2 text-gray-400 hover:text-pantheon-gold transition-colors w-fit"
+      >
+        <ArrowLeft size={20} />
+        <span className="uppercase tracking-widest text-sm font-bold">Return to Library</span>
+      </button>
 
-      <div className="relative aspect-video w-full bg-black rounded-2xl overflow-hidden border border-pantheon-gold/10" style={{ boxShadow: '0 0 40px rgba(255,215,0,0.15)' }}>
-        <iframe
-          src={embedUrl}
-          className="absolute inset-0 w-full h-full"
-          allowFullScreen
-          frameBorder="0"
-          scrolling="no"
-          title="StreamPrime Player"
-          allow="autoplay; fullscreen"
-        ></iframe>
-      </div>
-
-      <div className="space-y-2 py-4">
-        <h1 className="text-3xl font-black text-pantheon-gold uppercase" style={{ textShadow: '0 0 20px rgba(255,215,0,0.5)' }}>
-          {media.Title}
-        </h1>
-        {isTV && (
-          <p className="text-pantheon-gold/60 font-bold tracking-widest">
-            SEASON {media.season} • EPISODE {media.episode}
-          </p>
+      {/* Player */}
+      <div className="relative aspect-video w-full bg-black rounded-2xl overflow-hidden border border-pantheon-gold/10 shadow-[0_0_40px_rgba(255,215,0,0.15)]">
+        {!loading && embedSrc && (
+          <iframe
+            key={embedSrc}
+            src={embedSrc}
+            className="absolute inset-0 w-full h-full"
+            allowFullScreen
+            frameBorder="0"
+            scrolling="no"
+            title="StreamPrime Player"
+            allow="autoplay; fullscreen"
+          />
         )}
-        <div className="flex gap-4 text-sm text-gray-400">
-          {media.Year && <span>{media.Year}</span>}
-          {media.Runtime && media.Runtime !== 'N/A' && <span>{media.Runtime}</span>}
-          {media.Rated && media.Rated !== 'N/A' && <span className="border border-gray-700 px-2 rounded">{media.Rated}</span>}
-          {media.imdbRating && media.imdbRating !== 'N/A' && (
-            <span className="text-pantheon-gold font-bold">★ {media.imdbRating}</span>
-          )}
-        </div>
-        {media.Genre && media.Genre !== 'N/A' && (
-          <div className="flex flex-wrap gap-2">
-            {media.Genre.split(', ').map(g => (
-              <span key={g} className="text-xs border border-pantheon-gold/30 text-pantheon-gold/70 px-2 py-1 rounded-full">{g}</span>
-            ))}
+        {loading && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 bg-black">
+            <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-pantheon-gold" />
+            <p className="text-gray-600 text-xs uppercase tracking-widest">Loading signal...</p>
           </div>
         )}
-        <p className="text-gray-400 max-w-3xl leading-relaxed">
-          {media.Plot && media.Plot !== 'N/A' ? media.Plot : media.description?.replace(/<[^>]*>?/gm, '') || ''}
-        </p>
-        {media.Actors && media.Actors !== 'N/A' && (
-          <p className="text-xs text-gray-600 uppercase tracking-widest">Cast: {media.Actors}</p>
-        )}
       </div>
+
+      {/* Metadata */}
+      <div className="grid grid-cols-1 lg:grid-cols-[auto_1fr] gap-6">
+        {/* Poster */}
+        {posterSrc && (
+          <div className="hidden lg:block w-36 xl:w-44 flex-shrink-0">
+            <img
+              src={posterSrc}
+              alt={title}
+              className="rounded-xl border border-pantheon-gold/20 shadow-[0_0_20px_rgba(255,215,0,0.1)] w-full"
+            />
+          </div>
+        )}
+
+        {/* Info */}
+        <div className="space-y-3">
+          <h1 className="text-3xl md:text-4xl font-black text-pantheon-gold uppercase leading-tight"
+              style={{ textShadow: '0 0 20px rgba(255,215,0,0.5)' }}>
+            {title}
+          </h1>
+
+          {tagline && (
+            <p className="text-gray-500 italic text-sm">"{tagline}"</p>
+          )}
+
+          {isTV && media.season && (
+            <p className="text-pantheon-gold/60 font-bold tracking-widest text-sm">
+              SEASON {media.season} • EPISODE {media.episode}
+            </p>
+          )}
+
+          <div className="flex flex-wrap gap-3 text-sm text-gray-400 items-center">
+            {releaseDate && <span>{releaseDate}</span>}
+            {runtime && <span>{runtime} min</span>}
+            {numSeasons && <span>{numSeasons} season{numSeasons > 1 ? 's' : ''}</span>}
+            {numEpisodes && <span>{numEpisodes} episodes</span>}
+            {rating && (
+              <span className="flex items-center gap-1 text-pantheon-gold font-bold">
+                <Star size={14} fill="currentColor" /> {rating}
+              </span>
+            )}
+          </div>
+
+          {genres.length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              {genres.map(g => (
+                <span key={g} className="text-xs border border-pantheon-gold/30 text-pantheon-gold/70 px-2 py-1 rounded-full">
+                  {g}
+                </span>
+              ))}
+            </div>
+          )}
+
+          {overview && (
+            <p className="text-gray-400 max-w-3xl leading-relaxed text-sm">{overview}</p>
+          )}
+
+          {/* Trailer button */}
+          {trailerKey && (
+            <button
+              onClick={() => setShowTrailer(v => !v)}
+              className="flex items-center gap-2 border border-pantheon-gold/40 text-pantheon-gold px-4 py-2 rounded-full text-xs font-black uppercase tracking-widest hover:bg-pantheon-gold hover:text-black transition-all"
+            >
+              <Play size={14} fill="currentColor" />
+              {showTrailer ? 'Hide Trailer' : 'Watch Trailer'}
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Trailer embed */}
+      {showTrailer && trailerKey && (
+        <div className="relative aspect-video w-full max-w-3xl rounded-2xl overflow-hidden border border-pantheon-gold/10">
+          <iframe
+            src={`https://www.youtube.com/embed/${trailerKey}?autoplay=1`}
+            className="absolute inset-0 w-full h-full"
+            allowFullScreen
+            frameBorder="0"
+            allow="autoplay; fullscreen"
+            title="Trailer"
+          />
+        </div>
+      )}
+
+      {/* Cast */}
+      {cast.length > 0 && (
+        <div>
+          <h2 className="text-pantheon-gold text-xs font-black uppercase tracking-widest mb-3 border-l-4 border-pantheon-gold pl-3">
+            Top Cast
+          </h2>
+          <div className="flex gap-4 overflow-x-auto scrollbar-hide pb-2">
+            {cast.map(c => (
+              <div key={c.id} className="flex-shrink-0 w-20 text-center space-y-1">
+                <div className="w-16 h-16 rounded-full mx-auto overflow-hidden bg-gray-900 border border-white/10">
+                  {c.profile_path ? (
+                    <img
+                      src={`https://image.tmdb.org/t/p/w185${c.profile_path}`}
+                      alt={c.name}
+                      className="w-full h-full object-cover"
+                      loading="lazy"
+                    />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center text-2xl">👤</div>
+                  )}
+                </div>
+                <p className="text-[10px] font-bold text-gray-300 truncate">{c.name}</p>
+                <p className="text-[9px] text-gray-600 truncate">{c.character}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
