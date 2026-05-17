@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { ArrowLeft, Star, Play, Info } from 'lucide-react';
+import React, { useEffect, useState, useRef } from 'react';
+import { ArrowLeft, Star, Play } from 'lucide-react';
 import {
   getMovieDetails, getTVDetails,
   buildVidSrcUrl, buildVidSrcAlt,
@@ -7,10 +7,32 @@ import {
 } from '../api';
 
 export default function Player({ media, onBack }) {
-  const [details, setDetails]   = useState(null);
-  const [loading, setLoading]   = useState(true);
+  const [details, setDetails]       = useState(null);
+  const [loading, setLoading]       = useState(true);
   const [showTrailer, setShowTrailer] = useState(false);
-  const [embedSrc, setEmbedSrc] = useState('');
+  const [embedSrc, setEmbedSrc]     = useState('');
+  const [projector, setProjector]   = useState(false);
+  const [flipped, setFlipped]       = useState(true);
+  const wakeLockRef                 = useRef(null);
+
+  // Projector Mode — request wake lock + fullscreen
+  const enterProjector = async () => {
+    try {
+      if (navigator.wakeLock) {
+        wakeLockRef.current = await navigator.wakeLock.request('screen');
+      }
+      const el = document.documentElement;
+      if (el.requestFullscreen) el.requestFullscreen();
+      else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
+    } catch (e) { /* ignore */ }
+    setProjector(true);
+  };
+
+  const exitProjector = () => {
+    if (wakeLockRef.current) { wakeLockRef.current.release(); wakeLockRef.current = null; }
+    if (document.exitFullscreen) document.exitFullscreen().catch(() => {});
+    setProjector(false);
+  };
 
   const isTV    = media.media_type === 'tv';
   const isAnime = media.media_type === 'anime';
@@ -69,6 +91,44 @@ export default function Player({ media, onBack }) {
         <span className="uppercase tracking-widest text-sm font-bold">Return to Library</span>
       </button>
 
+      {/* ── Projector Mode Overlay ── */}
+      {projector && (
+        <div
+          className="fixed inset-0 z-[9999] bg-black flex items-center justify-center"
+          style={{ transform: flipped ? 'scaleX(-1)' : 'none' }}
+        >
+          <iframe
+            key={embedSrc + '_proj'}
+            src={embedSrc}
+            className="w-full h-full"
+            allowFullScreen
+            frameBorder="0"
+            scrolling="no"
+            title="StreamPrime Projector"
+            allow="autoplay; fullscreen"
+            style={{ display: 'block' }}
+          />
+          {/* Exit — not flipped (readable even when image is mirrored) */}
+          <div
+            style={{ transform: flipped ? 'scaleX(-1)' : 'none' }}
+            className="absolute top-4 right-4 flex gap-3 z-10"
+          >
+            <button
+              onClick={() => setFlipped(f => !f)}
+              className="bg-black/70 text-pantheon-gold text-xs font-bold px-3 py-2 rounded-lg border border-pantheon-gold/30 backdrop-blur"
+            >
+              {flipped ? '🔄 Flip: ON' : '🔄 Flip: OFF'}
+            </button>
+            <button
+              onClick={exitProjector}
+              className="bg-black/70 text-white text-xs font-bold px-3 py-2 rounded-lg border border-white/20 backdrop-blur"
+            >
+              ✕ Exit
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Player */}
       <div className="relative aspect-video w-full bg-black rounded-2xl overflow-hidden border border-pantheon-gold/10 shadow-[0_0_40px_rgba(255,215,0,0.15)]">
         {!loading && embedSrc && (
@@ -88,6 +148,15 @@ export default function Player({ media, onBack }) {
             <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-pantheon-gold" />
             <p className="text-gray-600 text-xs uppercase tracking-widest">Loading signal...</p>
           </div>
+        )}
+        {/* Projector Mode Button */}
+        {!loading && embedSrc && (
+          <button
+            onClick={enterProjector}
+            className="absolute bottom-3 right-3 bg-black/80 text-pantheon-gold text-xs font-black px-3 py-2 rounded-lg border border-pantheon-gold/40 backdrop-blur hover:bg-pantheon-gold hover:text-black transition-all uppercase tracking-widest z-10"
+          >
+            📽 Projector
+          </button>
         )}
       </div>
 
