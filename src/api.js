@@ -14,6 +14,17 @@ const tmdb = axios.create({
   params:  { api_key: TMDB_KEY, language: 'en-US' },
 });
 
+// ─── GLOBAL DEDUPLICATION ───────────────────────────────────────────────────
+// Tracks IDs already shown across all home rows in this session
+const _seenIds = new Set();
+export const resetSeenIds = () => _seenIds.clear();
+
+const dedup = (results) => {
+  const fresh = results.filter(r => !_seenIds.has(`${r.media_type || 'x'}-${r.id}`));
+  fresh.forEach(r => _seenIds.add(`${r.media_type || 'x'}-${r.id}`));
+  return fresh;
+};
+
 // ─── GENERIC FETCH WITH MEDIA TYPE TAG ──────────────────────────────────────
 const tag = (results, media_type) =>
   (results || []).map(r => ({ ...r, media_type: r.media_type || media_type }));
@@ -27,34 +38,34 @@ export const fetchTrending = async (mediaType = 'all', timeWindow = 'week', page
 };
 
 // ─── MOVIES ──────────────────────────────────────────────────────────────────
-export const fetchPopular      = async (mediaType = 'movie', page = 1) => {
+export const fetchPopular = async (mediaType = 'movie', page = 1) => {
   const { data } = await tmdb.get(`/${mediaType}/popular`, { params: { page } });
   return tag(data.results, mediaType);
 };
-export const fetchTopRated     = async (mediaType = 'movie', page = 1) => {
+export const fetchTopRated = async (mediaType = 'movie', page = 1) => {
   const { data } = await tmdb.get(`/${mediaType}/top_rated`, { params: { page } });
   return tag(data.results, mediaType);
 };
-export const fetchNowPlaying   = async (page = 1) => {
+export const fetchNowPlaying = async (page = 1) => {
   const { data } = await tmdb.get('/movie/now_playing', { params: { page } });
   return tag(data.results, 'movie');
 };
-export const fetchUpcoming     = async (page = 1) => {
+export const fetchUpcoming = async (page = 1) => {
   const { data } = await tmdb.get('/movie/upcoming', { params: { page } });
   return tag(data.results, 'movie');
 };
 
 // ─── TV ───────────────────────────────────────────────────────────────────────
-export const fetchOnTheAir     = async (page = 1) => {
+export const fetchOnTheAir = async (page = 1) => {
   const { data } = await tmdb.get('/tv/on_the_air', { params: { page } });
   return tag(data.results, 'tv');
 };
-export const fetchAiringToday  = async (page = 1) => {
+export const fetchAiringToday = async (page = 1) => {
   const { data } = await tmdb.get('/tv/airing_today', { params: { page } });
   return tag(data.results, 'tv');
 };
 
-// ─── DISCOVER (the power endpoint — filters everything) ───────────────────────
+// ─── DISCOVER ────────────────────────────────────────────────────────────────
 export const discover = async (mediaType = 'movie', params = {}, page = 1) => {
   try {
     const { data } = await tmdb.get(`/discover/${mediaType}`, {
@@ -64,8 +75,8 @@ export const discover = async (mediaType = 'movie', params = {}, page = 1) => {
   } catch (e) { return { results: [], totalPages: 1 }; }
 };
 
-export const fetchByGenre = async (mediaType = 'movie', genreId, page = 1) =>
-  (await discover(mediaType, { with_genres: genreId }, page)).results;
+export const fetchByGenre = async (mediaType = 'movie', genreId, page = 1, sort = 'popularity.desc') =>
+  (await discover(mediaType, { with_genres: genreId, sort_by: sort }, page)).results;
 
 export const fetchByNetwork = async (networkId, page = 1) =>
   (await discover('tv', { with_networks: networkId }, page)).results;
@@ -97,6 +108,22 @@ export const fetchCertified = async (cert = 'PG-13', page = 1) =>
 
 export const fetchByVote = async (mediaType = 'movie', minVote = 8.0, page = 1) =>
   (await discover(mediaType, { 'vote_average.gte': minVote, 'vote_count.gte': 200 }, page)).results;
+
+// Sort by vote_average desc (reveals hidden gems, not just popular)
+export const fetchByVoteDesc = async (mediaType = 'movie', minVote = 7.5, minCount = 500, page = 1) =>
+  (await discover(mediaType, { sort_by: 'vote_average.desc', 'vote_average.gte': minVote, 'vote_count.gte': minCount }, page)).results;
+
+// Sort by revenue desc (box office kings — totally different from popularity)
+export const fetchByRevenue = async (page = 1) =>
+  (await discover('movie', { sort_by: 'revenue.desc', 'vote_count.gte': 100 }, page)).results;
+
+// Best-rated within a specific year
+export const fetchRecentHighRated = async (mediaType = 'movie', year, page = 1) => {
+  const params = mediaType === 'movie'
+    ? { primary_release_year: year, sort_by: 'vote_average.desc', 'vote_count.gte': 100 }
+    : { first_air_date_year: year, sort_by: 'vote_average.desc', 'vote_count.gte': 50 };
+  return (await discover(mediaType, params, page)).results;
+};
 
 // ─── SEARCH ──────────────────────────────────────────────────────────────────
 export const searchTMDB = async (query, page = 1) => {
@@ -217,7 +244,6 @@ export const getWatchProviders = async (mediaType, id) => {
   } catch (e) { return null; }
 };
 
-// ─── EXTERNAL IDs ────────────────────────────────────────────────────────────
 export const getExternalIds = async (tmdbId, mediaType) => {
   try {
     const { data } = await tmdb.get(`/${mediaType}/${tmdbId}/external_ids`);
@@ -225,7 +251,6 @@ export const getExternalIds = async (tmdbId, mediaType) => {
   } catch (e) { return {}; }
 };
 
-// ─── PEOPLE ──────────────────────────────────────────────────────────────────
 export const fetchPopularPeople = async (page = 1) => {
   try {
     const { data } = await tmdb.get('/person/popular', { params: { page } });
@@ -274,7 +299,6 @@ export const TV_GENRES = [
   { id: 37,    name: '🤠 Western'             },
 ];
 
-// ─── NETWORKS (TV) ────────────────────────────────────────────────────────────
 export const TV_NETWORKS = [
   { id: 49,   name: '🎭 HBO'         },
   { id: 2552, name: '🎭 HBO Max'     },
@@ -294,131 +318,143 @@ export const TV_NETWORKS = [
 ];
 
 // ─── BROWSE ROW DEFINITIONS ───────────────────────────────────────────────────
+// Each row intentionally uses a DIFFERENT sort_by so the same title
+// cannot dominate multiple rows. Global dedup in fetchBrowseRow() catches anything
+// that still slips through.
 export const BROWSE_ROWS = [
-  // ── Trending
-  { id: 'trending_all_week',   label: '🔥 Trending This Week',          fetch: () => fetchTrending('all',   'week') },
-  { id: 'trending_all_day',    label: '⚡ Trending Today',               fetch: () => fetchTrending('all',   'day')  },
-  { id: 'trending_movies',     label: '🎬 Trending Movies',              fetch: () => fetchTrending('movie', 'week') },
-  { id: 'trending_tv',         label: '📺 Trending Series',             fetch: () => fetchTrending('tv',    'week') },
+  // ── Trending (time windows differ)
+  { id: 'trending_all_week',   label: '🔥 Trending This Week',           fetch: () => fetchTrending('all',   'week') },
+  { id: 'trending_all_day',    label: '⚡ Hot Right Now',                fetch: () => fetchTrending('all',   'day').then(r => r.slice(10)) },
+  { id: 'trending_movies',     label: '🎬 Trending Movies',              fetch: () => fetchTrending('movie', 'week').then(r => r.slice(5)) },
+  { id: 'trending_tv',         label: '📺 Trending Series',              fetch: () => fetchTrending('tv',    'week') },
 
-  // ── Movies
-  { id: 'popular_movies',      label: '🌟 Most Popular Movies',         fetch: () => fetchPopular('movie')    },
-  { id: 'top_rated_movies',    label: '⭐ All-Time Greatest Films',      fetch: () => fetchTopRated('movie')   },
-  { id: 'now_playing',         label: '🎬 Now Playing in Theaters',     fetch: () => fetchNowPlaying()         },
-  { id: 'upcoming',            label: '🗓️ Coming Soon',                  fetch: () => fetchUpcoming()           },
-  { id: 'high_revenue',        label: '💰 Highest Grossing Films',      fetch: () => fetchHighBudget()         },
-  { id: 'highest_rated',       label: '💯 Critically Acclaimed (8.0+)', fetch: () => fetchByVote('movie', 8.0) },
+  // ── In theaters / on air (always fresh, no overlap with ranking lists)
+  { id: 'now_playing',         label: '🎬 In Theaters Now',              fetch: () => fetchNowPlaying()    },
+  { id: 'upcoming',            label: '🗓️ Coming Soon',                   fetch: () => fetchUpcoming()      },
+  { id: 'airing_today',        label: '📅 Airing Today',                 fetch: () => fetchAiringToday()   },
+  { id: 'on_the_air',          label: '🔴 On Air This Week',             fetch: () => fetchOnTheAir()      },
 
-  // ── TV
-  { id: 'popular_tv',          label: '📡 Most Popular Series',         fetch: () => fetchPopular('tv')        },
-  { id: 'top_rated_tv',        label: '🏆 Highest Rated Series',        fetch: () => fetchTopRated('tv')       },
-  { id: 'on_the_air',          label: '🔴 On Air Right Now',            fetch: () => fetchOnTheAir()           },
-  { id: 'airing_today',        label: '📅 Airing Today',                fetch: () => fetchAiringToday()        },
-  { id: 'best_tv',             label: '🎖️ TV Hall of Fame (8.5+)',      fetch: () => fetchByVote('tv', 8.5)   },
+  // ── All-time rankings (sorted by vote_average — different titles than popularity)
+  { id: 'top_rated_movies',    label: '⭐ All-Time Greatest Films',       fetch: () => fetchByVoteDesc('movie', 8.0, 1000) },
+  { id: 'top_rated_tv',        label: '🏆 Highest Rated Series Ever',    fetch: () => fetchByVoteDesc('tv',   8.0, 500)   },
+  { id: 'highest_rated_85',    label: '💯 Perfect Score Club (8.5+)',    fetch: () => fetchByVote('movie', 8.5)           },
+  { id: 'best_tv_85',          label: '🎖️ TV Hall of Fame (8.5+)',       fetch: () => fetchByVote('tv', 8.5)             },
 
-  // ── Movie Genres
-  { id: 'g_action',            label: '⚡ Action & Adrenaline',         fetch: () => fetchByGenre('movie', 28)    },
-  { id: 'g_adventure',         label: '🗺️ Epic Adventures',             fetch: () => fetchByGenre('movie', 12)    },
-  { id: 'g_animation',         label: '🎨 Animation',                   fetch: () => fetchByGenre('movie', 16)    },
-  { id: 'g_comedy',            label: '😂 Comedy Films',                fetch: () => fetchByGenre('movie', 35)    },
-  { id: 'g_crime',             label: '🕵️ Crime Films',                 fetch: () => fetchByGenre('movie', 80)    },
-  { id: 'g_documentary',       label: '🎥 Documentaries',               fetch: () => fetchByGenre('movie', 99)    },
-  { id: 'g_drama',             label: '🎭 Drama Films',                 fetch: () => fetchByGenre('movie', 18)    },
-  { id: 'g_family',            label: '👨‍👩‍👧 Family Movies',              fetch: () => fetchByGenre('movie', 10751) },
-  { id: 'g_fantasy',           label: '🧙 Fantasy Films',               fetch: () => fetchByGenre('movie', 14)    },
-  { id: 'g_history',           label: '📜 Historical Epics',            fetch: () => fetchByGenre('movie', 36)    },
-  { id: 'g_horror',            label: '👻 Horror & Terror',             fetch: () => fetchByGenre('movie', 27)    },
-  { id: 'g_music',             label: '🎵 Music Films',                 fetch: () => fetchByGenre('movie', 10402) },
-  { id: 'g_mystery',           label: '🔍 Mystery Films',               fetch: () => fetchByGenre('movie', 9648)  },
-  { id: 'g_romance',           label: '💘 Romance Films',               fetch: () => fetchByGenre('movie', 10749) },
-  { id: 'g_scifi',             label: '🚀 Sci-Fi Films',                fetch: () => fetchByGenre('movie', 878)   },
-  { id: 'g_thriller',          label: '🔪 Thrillers',                   fetch: () => fetchByGenre('movie', 53)    },
-  { id: 'g_war',               label: '⚔️ War Films',                   fetch: () => fetchByGenre('movie', 10752) },
-  { id: 'g_western',           label: '🤠 Westerns',                    fetch: () => fetchByGenre('movie', 37)    },
+  // ── Box office (sorted by revenue — completely different from popularity)
+  { id: 'high_revenue',        label: '💰 Highest Grossing All Time',    fetch: () => fetchByRevenue()    },
+  { id: 'high_revenue_p2',     label: '💵 Box Office Legends',           fetch: () => fetchByRevenue(2)   },
+
+  // ── Popular (page 2 to avoid the top-10 already in trending)
+  { id: 'popular_movies',      label: '🌟 Popular Movies',               fetch: () => fetchPopular('movie', 2) },
+  { id: 'popular_tv',          label: '📡 Popular Series',               fetch: () => fetchPopular('tv',   2)  },
+
+  // ── Best of each year (sorted by vote_average within year — hidden gems surface)
+  { id: 'best_2024_movies',    label: '🏅 Best of 2024',                 fetch: () => fetchRecentHighRated('movie', 2024) },
+  { id: 'best_2023_movies',    label: '🏅 Best of 2023',                 fetch: () => fetchRecentHighRated('movie', 2023) },
+  { id: 'best_2022_movies',    label: '🏅 Best of 2022',                 fetch: () => fetchRecentHighRated('movie', 2022) },
+  { id: 'best_2024_tv',        label: '📺 Best TV of 2024',              fetch: () => fetchRecentHighRated('tv', 2024)    },
+  { id: 'best_2023_tv',        label: '📺 Best TV of 2023',              fetch: () => fetchRecentHighRated('tv', 2023)    },
+
+  // ── Movie Genres (each uses a different sort to prevent same title in two rows)
+  { id: 'g_action',            label: '⚡ Action & Adrenaline',          fetch: () => fetchByGenre('movie', 28,    1, 'vote_average.desc') },
+  { id: 'g_adventure',         label: '🗺️ Epic Adventures',              fetch: () => fetchByGenre('movie', 12,    1, 'revenue.desc')      },
+  { id: 'g_animation',         label: '🎨 Animation',                    fetch: () => fetchByGenre('movie', 16,    1, 'vote_average.desc') },
+  { id: 'g_comedy',            label: '😂 Comedy Films',                 fetch: () => fetchByGenre('movie', 35,    1, 'popularity.desc')   },
+  { id: 'g_crime',             label: '🕵️ Crime Films',                  fetch: () => fetchByGenre('movie', 80,    1, 'vote_average.desc') },
+  { id: 'g_documentary',       label: '🎥 Documentaries',                fetch: () => fetchByGenre('movie', 99,    1, 'popularity.desc')   },
+  { id: 'g_drama',             label: '🎭 Drama Films',                  fetch: () => fetchByGenre('movie', 18,    1, 'vote_average.desc') },
+  { id: 'g_family',            label: '👨‍👩‍👧 Family Movies',               fetch: () => fetchByGenre('movie', 10751, 1, 'revenue.desc')     },
+  { id: 'g_fantasy',           label: '🧙 Fantasy Films',                fetch: () => fetchByGenre('movie', 14,    1, 'revenue.desc')      },
+  { id: 'g_history',           label: '📜 Historical Epics',             fetch: () => fetchByGenre('movie', 36,    1, 'vote_average.desc') },
+  { id: 'g_horror',            label: '👻 Horror & Terror',              fetch: () => fetchByGenre('movie', 27,    1, 'popularity.desc')   },
+  { id: 'g_music',             label: '🎵 Music Films',                  fetch: () => fetchByGenre('movie', 10402, 1, 'vote_average.desc') },
+  { id: 'g_mystery',           label: '🔍 Mystery Films',                fetch: () => fetchByGenre('movie', 9648,  1, 'vote_average.desc') },
+  { id: 'g_romance',           label: '💘 Romance Films',                fetch: () => fetchByGenre('movie', 10749, 1, 'popularity.desc')   },
+  { id: 'g_scifi',             label: '🚀 Sci-Fi Films',                 fetch: () => fetchByGenre('movie', 878,   1, 'revenue.desc')      },
+  { id: 'g_thriller',          label: '🔪 Thrillers',                    fetch: () => fetchByGenre('movie', 53,    1, 'vote_average.desc') },
+  { id: 'g_war',               label: '⚔️ War Films',                    fetch: () => fetchByGenre('movie', 10752, 1, 'vote_average.desc') },
+  { id: 'g_western',           label: '🤠 Westerns',                     fetch: () => fetchByGenre('movie', 37,    1, 'vote_average.desc') },
 
   // ── TV Genres
-  { id: 'tv_action',           label: '⚡ Action & Adventure Series',   fetch: () => fetchByGenre('tv', 10759) },
-  { id: 'tv_animation',        label: '🎨 Animated Series',             fetch: () => fetchByGenre('tv', 16)    },
-  { id: 'tv_comedy',           label: '😂 Comedy Series',               fetch: () => fetchByGenre('tv', 35)    },
-  { id: 'tv_crime',            label: '🕵️ Crime Series',                fetch: () => fetchByGenre('tv', 80)    },
-  { id: 'tv_documentary',      label: '🎥 Documentary Series',          fetch: () => fetchByGenre('tv', 99)    },
-  { id: 'tv_drama',            label: '🎭 Drama Series',                fetch: () => fetchByGenre('tv', 18)    },
-  { id: 'tv_family',           label: '👨‍👩‍👧 Family Series',              fetch: () => fetchByGenre('tv', 10751) },
-  { id: 'tv_kids',             label: '🧒 Kids Shows',                  fetch: () => fetchByGenre('tv', 10762) },
-  { id: 'tv_mystery',          label: '🔍 Mystery Series',              fetch: () => fetchByGenre('tv', 9648)  },
-  { id: 'tv_reality',          label: '🎤 Reality TV',                  fetch: () => fetchByGenre('tv', 10764) },
-  { id: 'tv_scifi',            label: '🚀 Sci-Fi & Fantasy Series',     fetch: () => fetchByGenre('tv', 10765) },
-  { id: 'tv_war',              label: '🌍 War & Politics Series',       fetch: () => fetchByGenre('tv', 10768) },
-  { id: 'tv_western',          label: '🤠 Western Series',              fetch: () => fetchByGenre('tv', 37)    },
+  { id: 'tv_action',           label: '⚡ Action & Adventure Series',    fetch: () => fetchByGenre('tv', 10759, 1, 'vote_average.desc') },
+  { id: 'tv_animation',        label: '🎨 Animated Series',              fetch: () => fetchByGenre('tv', 16,    1, 'popularity.desc')   },
+  { id: 'tv_comedy',           label: '😂 Comedy Series',                fetch: () => fetchByGenre('tv', 35,    1, 'vote_average.desc') },
+  { id: 'tv_crime',            label: '🕵️ Crime Series',                 fetch: () => fetchByGenre('tv', 80,    1, 'vote_average.desc') },
+  { id: 'tv_documentary',      label: '🎥 Documentary Series',           fetch: () => fetchByGenre('tv', 99,    1, 'popularity.desc')   },
+  { id: 'tv_drama',            label: '🎭 Drama Series',                 fetch: () => fetchByGenre('tv', 18,    1, 'vote_average.desc') },
+  { id: 'tv_family',           label: '👨‍👩‍👧 Family Series',               fetch: () => fetchByGenre('tv', 10751, 1, 'popularity.desc')  },
+  { id: 'tv_kids',             label: '🧒 Kids Shows',                   fetch: () => fetchByGenre('tv', 10762, 1, 'popularity.desc')  },
+  { id: 'tv_mystery',          label: '🔍 Mystery Series',               fetch: () => fetchByGenre('tv', 9648,  1, 'vote_average.desc') },
+  { id: 'tv_reality',          label: '🎤 Reality TV',                   fetch: () => fetchByGenre('tv', 10764, 1, 'popularity.desc')  },
+  { id: 'tv_scifi',            label: '🚀 Sci-Fi & Fantasy Series',      fetch: () => fetchByGenre('tv', 10765, 1, 'vote_average.desc') },
+  { id: 'tv_war',              label: '🌍 War & Politics Series',        fetch: () => fetchByGenre('tv', 10768, 1, 'vote_average.desc') },
+  { id: 'tv_western',          label: '🤠 Western Series',               fetch: () => fetchByGenre('tv', 37,    1, 'vote_average.desc') },
 
   // ── Networks
-  { id: 'net_netflix',         label: '📺 Netflix Originals',           fetch: () => fetchByNetwork(213)   },
-  { id: 'net_hbo',             label: '🎭 HBO',                         fetch: () => fetchByNetwork(49)    },
-  { id: 'net_amazon',          label: '📦 Amazon Prime Video',          fetch: () => fetchByNetwork(1024)  },
-  { id: 'net_apple',           label: '🍎 Apple TV+',                   fetch: () => fetchByNetwork(2739)  },
-  { id: 'net_disney',          label: '🏰 Disney+',                     fetch: () => fetchByNetwork(2739)  },
-  { id: 'net_amc',             label: '🎬 AMC',                         fetch: () => fetchByNetwork(174)   },
-  { id: 'net_fx',              label: '🎪 FX',                          fetch: () => fetchByNetwork(56)    },
-  { id: 'net_adultsw',         label: '👽 Adult Swim',                  fetch: () => fetchByNetwork(16)    },
+  { id: 'net_netflix',         label: '📺 Netflix',                      fetch: () => fetchByNetwork(213)  },
+  { id: 'net_hbo',             label: '🎭 HBO',                          fetch: () => fetchByNetwork(49)   },
+  { id: 'net_amazon',          label: '📦 Amazon Prime',                 fetch: () => fetchByNetwork(1024) },
+  { id: 'net_apple',           label: '🍎 Apple TV+',                    fetch: () => fetchByNetwork(2739) },
+  { id: 'net_amc',             label: '🎬 AMC',                          fetch: () => fetchByNetwork(174)  },
+  { id: 'net_fx',              label: '🎪 FX',                           fetch: () => fetchByNetwork(56)   },
+  { id: 'net_adultsw',         label: '👽 Adult Swim',                   fetch: () => fetchByNetwork(16)   },
 
   // ── By Decade
-  { id: 'decade_2020s_m',      label: '📅 2020s Movies',               fetch: () => fetchByDecade('movie', 2020, 2029) },
-  { id: 'decade_2010s_m',      label: '📅 2010s Movies',               fetch: () => fetchByDecade('movie', 2010, 2019) },
-  { id: 'decade_2000s_m',      label: '📅 2000s Movies',               fetch: () => fetchByDecade('movie', 2000, 2009) },
-  { id: 'decade_90s_m',        label: '📅 90s Movies',                 fetch: () => fetchByDecade('movie', 1990, 1999) },
-  { id: 'decade_80s_m',        label: '📅 80s Movies',                 fetch: () => fetchByDecade('movie', 1980, 1989) },
-  { id: 'decade_70s_m',        label: '📅 70s Movies',                 fetch: () => fetchByDecade('movie', 1970, 1979) },
-  { id: 'decade_classic_m',    label: '🎞️ Classic Era (pre-1970)',     fetch: () => fetchByDecade('movie', 1900, 1969) },
-  { id: 'decade_2020s_tv',     label: '📅 2020s Series',               fetch: () => fetchByDecade('tv', 2020, 2029) },
-  { id: 'decade_2010s_tv',     label: '📅 2010s Series',               fetch: () => fetchByDecade('tv', 2010, 2019) },
-  { id: 'decade_2000s_tv',     label: '📅 2000s Series',               fetch: () => fetchByDecade('tv', 2000, 2009) },
-  { id: 'decade_90s_tv',       label: '📅 90s Series',                 fetch: () => fetchByDecade('tv', 1990, 1999) },
+  { id: 'decade_2020s_m',      label: '📅 2020s Movies',                fetch: () => fetchByDecade('movie', 2020, 2029) },
+  { id: 'decade_2010s_m',      label: '📅 2010s Movies',                fetch: () => fetchByDecade('movie', 2010, 2019) },
+  { id: 'decade_2000s_m',      label: '📅 2000s Movies',                fetch: () => fetchByDecade('movie', 2000, 2009) },
+  { id: 'decade_90s_m',        label: '📅 90s Movies',                  fetch: () => fetchByDecade('movie', 1990, 1999) },
+  { id: 'decade_80s_m',        label: '📅 80s Movies',                  fetch: () => fetchByDecade('movie', 1980, 1989) },
+  { id: 'decade_70s_m',        label: '📅 70s Movies',                  fetch: () => fetchByDecade('movie', 1970, 1979) },
+  { id: 'decade_classic_m',    label: '🎞️ Classic Era (pre-1970)',      fetch: () => fetchByDecade('movie', 1900, 1969) },
+  { id: 'decade_2020s_tv',     label: '📅 2020s Series',                fetch: () => fetchByDecade('tv', 2020, 2029)   },
+  { id: 'decade_2010s_tv',     label: '📅 2010s Series',                fetch: () => fetchByDecade('tv', 2010, 2019)   },
+  { id: 'decade_2000s_tv',     label: '📅 2000s Series',                fetch: () => fetchByDecade('tv', 2000, 2009)   },
+  { id: 'decade_90s_tv',       label: '📅 90s Series',                  fetch: () => fetchByDecade('tv', 1990, 1999)   },
 
   // ── By Language / Region
-  { id: 'lang_japanese',       label: '🇯🇵 Japanese Cinema',            fetch: () => fetchByLanguage('movie', 'ja') },
-  { id: 'lang_korean',         label: '🇰🇷 Korean Cinema & K-Dramas',  fetch: () => fetchByLanguage('movie', 'ko') },
-  { id: 'lang_spanish',        label: '🇪🇸 Spanish Language Films',     fetch: () => fetchByLanguage('movie', 'es') },
-  { id: 'lang_french',         label: '🇫🇷 French Cinema',              fetch: () => fetchByLanguage('movie', 'fr') },
-  { id: 'lang_hindi',          label: '🇮🇳 Bollywood',                  fetch: () => fetchByLanguage('movie', 'hi') },
-  { id: 'lang_italian',        label: '🇮🇹 Italian Cinema',             fetch: () => fetchByLanguage('movie', 'it') },
-  { id: 'lang_german',         label: '🇩🇪 German Films',               fetch: () => fetchByLanguage('movie', 'de') },
-  { id: 'lang_portuguese',     label: '🇧🇷 Portuguese Language',        fetch: () => fetchByLanguage('movie', 'pt') },
-  { id: 'lang_chinese',        label: '🇨🇳 Chinese Cinema',             fetch: () => fetchByLanguage('movie', 'zh') },
-  { id: 'lang_russian',        label: '🇷🇺 Russian Films',              fetch: () => fetchByLanguage('movie', 'ru') },
-  { id: 'lang_arabic',         label: '🌙 Arabic Films',                fetch: () => fetchByLanguage('movie', 'ar') },
-  { id: 'lang_kdramas',        label: '🇰🇷 K-Dramas',                   fetch: () => fetchByLanguage('tv',    'ko') },
-  { id: 'lang_anime_jp',       label: '🇯🇵 Japanese Anime Series',      fetch: () => fetchByLanguage('tv',    'ja') },
+  { id: 'lang_japanese',       label: '🇯🇵 Japanese Cinema',             fetch: () => fetchByLanguage('movie', 'ja') },
+  { id: 'lang_korean',         label: '🇰🇷 Korean Cinema',               fetch: () => fetchByLanguage('movie', 'ko') },
+  { id: 'lang_kdramas',        label: '🇰🇷 K-Dramas',                    fetch: () => fetchByLanguage('tv',    'ko') },
+  { id: 'lang_anime_jp',       label: '🇯🇵 Anime Series',                fetch: () => fetchByLanguage('tv',    'ja') },
+  { id: 'lang_spanish',        label: '🇪🇸 Spanish Language Films',      fetch: () => fetchByLanguage('movie', 'es') },
+  { id: 'lang_french',         label: '🇫🇷 French Cinema',               fetch: () => fetchByLanguage('movie', 'fr') },
+  { id: 'lang_hindi',          label: '🇮🇳 Bollywood',                   fetch: () => fetchByLanguage('movie', 'hi') },
+  { id: 'lang_italian',        label: '🇮🇹 Italian Cinema',              fetch: () => fetchByLanguage('movie', 'it') },
+  { id: 'lang_german',         label: '🇩🇪 German Films',                fetch: () => fetchByLanguage('movie', 'de') },
+  { id: 'lang_portuguese',     label: '🇧🇷 Portuguese Language',         fetch: () => fetchByLanguage('movie', 'pt') },
+  { id: 'lang_chinese',        label: '🇨🇳 Chinese Cinema',              fetch: () => fetchByLanguage('movie', 'zh') },
+  { id: 'lang_russian',        label: '🇷🇺 Russian Films',               fetch: () => fetchByLanguage('movie', 'ru') },
 
-  // ── Special / Niche
-  { id: 'short_films',         label: '⏱️ Short Films',                 fetch: () => fetchShortFilms()              },
-  { id: 'cert_r',              label: '🔞 R-Rated',                     fetch: () => fetchCertified('R')            },
-  { id: 'cert_pg13',           label: '🔞 PG-13',                       fetch: () => fetchCertified('PG-13')        },
-  { id: 'cert_g',              label: '👶 G-Rated (All Ages)',           fetch: () => fetchCertified('G')            },
+  // ── Special
+  { id: 'cert_r',              label: '🔞 R-Rated',                      fetch: () => fetchCertified('R')     },
+  { id: 'cert_pg13',           label: '📺 PG-13',                        fetch: () => fetchCertified('PG-13') },
+  { id: 'cert_g',              label: '👶 G-Rated (All Ages)',            fetch: () => fetchCertified('G')     },
+  { id: 'short_films',         label: '⏱️ Short Films',                  fetch: () => fetchShortFilms()        },
 
   // ── Keywords / Themes
-  { id: 'kw_superhero',        label: '🦸 Superhero Films',             fetch: () => fetchByKeyword('movie', 9715)  },
-  { id: 'kw_zombie',           label: '🧟 Zombie Films',                fetch: () => fetchByKeyword('movie', 12377) },
-  { id: 'kw_heist',            label: '💼 Heist Films',                 fetch: () => fetchByKeyword('movie', 10944) },
-  { id: 'kw_survival',         label: '🏕️ Survival Films',              fetch: () => fetchByKeyword('movie', 4565)  },
-  { id: 'kw_based_true',       label: '📖 Based on True Events',        fetch: () => fetchByKeyword('movie', 10683) },
-  { id: 'kw_space',            label: '🌌 Space Exploration',           fetch: () => fetchByKeyword('movie', 1326)  },
-  { id: 'kw_mafia',            label: '🤌 Mafia & Gangsters',           fetch: () => fetchByKeyword('movie', 6270)  },
-  { id: 'kw_time_travel',      label: '⏰ Time Travel',                 fetch: () => fetchByKeyword('movie', 4379)  },
-  { id: 'kw_dystopia',         label: '🌑 Dystopian Worlds',            fetch: () => fetchByKeyword('movie', 4565)  },
-  { id: 'kw_serial_killer',    label: '🔪 Serial Killers',              fetch: () => fetchByKeyword('tv',    1539)  },
+  { id: 'kw_superhero',        label: '🦸 Superhero Films',              fetch: () => fetchByKeyword('movie', 9715)  },
+  { id: 'kw_zombie',           label: '🧟 Zombie Films',                 fetch: () => fetchByKeyword('movie', 12377) },
+  { id: 'kw_heist',            label: '💼 Heist Films',                  fetch: () => fetchByKeyword('movie', 10944) },
+  { id: 'kw_survival',         label: '🏕️ Survival Films',               fetch: () => fetchByKeyword('movie', 4565)  },
+  { id: 'kw_based_true',       label: '📖 Based on True Events',         fetch: () => fetchByKeyword('movie', 10683) },
+  { id: 'kw_space',            label: '🌌 Space Exploration',            fetch: () => fetchByKeyword('movie', 1326)  },
+  { id: 'kw_mafia',            label: '🤌 Mafia & Gangsters',            fetch: () => fetchByKeyword('movie', 6270)  },
+  { id: 'kw_time_travel',      label: '⏰ Time Travel',                  fetch: () => fetchByKeyword('movie', 4379)  },
+  { id: 'kw_serial_killer',    label: '🔪 Serial Killers',               fetch: () => fetchByKeyword('tv',    1539)  },
 
-  // ── Studios / Companies
-  { id: 'studio_marvel',       label: '🕷️ Marvel Studios',              fetch: () => fetchByCompany('movie', 420)   },
-  { id: 'studio_dc',           label: '🦇 DC Films',                    fetch: () => fetchByCompany('movie', 9993)  },
-  { id: 'studio_pixar',        label: '🎈 Pixar',                       fetch: () => fetchByCompany('movie', 3)     },
-  { id: 'studio_disney',       label: '🏰 Walt Disney Pictures',        fetch: () => fetchByCompany('movie', 2)     },
-  { id: 'studio_wb',           label: '🎬 Warner Bros',                 fetch: () => fetchByCompany('movie', 174)   },
-  { id: 'studio_universal',    label: '🌍 Universal Pictures',          fetch: () => fetchByCompany('movie', 33)    },
-  { id: 'studio_sony',         label: '🎥 Sony Pictures',               fetch: () => fetchByCompany('movie', 5)     },
-  { id: 'studio_a24',          label: '🎭 A24',                         fetch: () => fetchByCompany('movie', 41077) },
-  { id: 'studio_paramount',    label: '⛰️ Paramount',                   fetch: () => fetchByCompany('movie', 4)     },
-  { id: 'studio_dreamworks',   label: '🌊 DreamWorks',                  fetch: () => fetchByCompany('movie', 521)   },
-  { id: 'studio_blumhouse',    label: '😱 Blumhouse Horror',            fetch: () => fetchByCompany('movie', 3172)  },
+  // ── Studios
+  { id: 'studio_marvel',       label: '🕷️ Marvel Studios',               fetch: () => fetchByCompany('movie', 420)   },
+  { id: 'studio_dc',           label: '🦇 DC Films',                     fetch: () => fetchByCompany('movie', 9993)  },
+  { id: 'studio_pixar',        label: '🎈 Pixar',                        fetch: () => fetchByCompany('movie', 3)     },
+  { id: 'studio_disney',       label: '🏰 Walt Disney Pictures',         fetch: () => fetchByCompany('movie', 2)     },
+  { id: 'studio_wb',           label: '🎬 Warner Bros',                  fetch: () => fetchByCompany('movie', 174)   },
+  { id: 'studio_universal',    label: '🌍 Universal Pictures',           fetch: () => fetchByCompany('movie', 33)    },
+  { id: 'studio_sony',         label: '🎥 Sony Pictures',                fetch: () => fetchByCompany('movie', 5)     },
+  { id: 'studio_a24',          label: '🎭 A24',                          fetch: () => fetchByCompany('movie', 41077) },
+  { id: 'studio_paramount',    label: '⛰️ Paramount',                    fetch: () => fetchByCompany('movie', 4)     },
+  { id: 'studio_dreamworks',   label: '🌊 DreamWorks',                   fetch: () => fetchByCompany('movie', 521)   },
+  { id: 'studio_blumhouse',    label: '😱 Blumhouse Horror',             fetch: () => fetchByCompany('movie', 3172)  },
 ];
 
 export const BROWSE_ROW_COUNT = BROWSE_ROWS.length;
@@ -427,8 +463,10 @@ export const fetchBrowseRow = async (rowIndex) => {
   const row = BROWSE_ROWS[rowIndex];
   if (!row) return { label: '', items: [] };
   try {
-    const items = await row.fetch();
-    return { label: row.label, items: (items || []).slice(0, 20) };
+    const raw = await row.fetch();
+    // Deduplicate against everything already shown on the home screen
+    const items = dedup(raw || []).slice(0, 20);
+    return { label: row.label, items };
   } catch (e) {
     return { label: row.label, items: [] };
   }
