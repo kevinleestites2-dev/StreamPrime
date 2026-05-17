@@ -1,38 +1,54 @@
 import axios from 'axios';
 
-const TMDB_API_KEY = import.meta.env.VITE_TMDB_API_KEY || 'YOUR_TMDB_KEY';
-const TMDB_BASE_URL = 'https://api.themoviedb.org/3';
+const OMDB_API_KEY = import.meta.env.VITE_OMDB_API_KEY || 'd361a3c1';
+const OMDB_BASE_URL = 'https://www.omdbapi.com';
 
-const tmdb = axios.create({
-  baseURL: TMDB_BASE_URL,
-  params: {
-    api_key: TMDB_API_KEY,
-  },
-});
-
-export const searchTMDB = async (query, type = 'multi') => {
+// Search movies/TV via OMDb
+export const searchOMDb = async (query) => {
   if (!query) return [];
   try {
-    const res = await tmdb.get(`/search/${type}`, {
-      params: { query },
+    const res = await axios.get(OMDB_BASE_URL, {
+      params: { apikey: OMDB_API_KEY, s: query },
     });
-    return res.data.results.filter(item => item.media_type !== 'person');
+    if (res.data.Response === 'False') return [];
+    return res.data.Search || [];
   } catch (error) {
-    console.error('TMDB Search Error:', error);
+    console.error('OMDb Search Error:', error);
     return [];
   }
 };
 
-export const getTMDBDetails = async (id, type) => {
+// Get full details for a single title by IMDb ID
+export const getOMDbDetails = async (imdbID) => {
   try {
-    const res = await tmdb.get(`/${type}/${id}`);
-    return res.data;
+    const res = await axios.get(OMDB_BASE_URL, {
+      params: { apikey: OMDB_API_KEY, i: imdbID, plot: 'full' },
+    });
+    return res.data.Response === 'True' ? res.data : null;
   } catch (error) {
-    console.error('TMDB Details Error:', error);
+    console.error('OMDb Details Error:', error);
     return null;
   }
 };
 
+// Map OMDb type to VidSrc type
+export const getVidSrcType = (omdbType) => {
+  if (omdbType === 'movie') return 'movie';
+  if (omdbType === 'series') return 'tv';
+  return 'movie';
+};
+
+// Build VidSrc embed URL
+// For movies: https://vidsrc.to/embed/movie/{imdbID}
+// For TV:     https://vidsrc.to/embed/tv/{imdbID}/{season}/{episode}
+export const buildVidSrcUrl = (imdbID, type, season = 1, episode = 1) => {
+  if (type === 'movie') {
+    return `https://vidsrc.to/embed/movie/${imdbID}`;
+  }
+  return `https://vidsrc.to/embed/tv/${imdbID}/${season}/${episode}`;
+};
+
+// AniList search (free, no key)
 export const searchAniList = async (query) => {
   const queryGraphQL = `
     query ($search: String) {
@@ -47,7 +63,6 @@ export const searchAniList = async (query) => {
           coverImage {
             large
           }
-          bannerImage
           description
           format
           status
@@ -59,7 +74,6 @@ export const searchAniList = async (query) => {
       }
     }
   `;
-
   try {
     const res = await axios.post('https://graphql.anilist.co', {
       query: queryGraphQL,
@@ -70,11 +84,4 @@ export const searchAniList = async (query) => {
     console.error('AniList Search Error:', error);
     return [];
   }
-};
-
-// Mapping AniList to TMDB (best effort via title search or external IDs)
-export const mapAnimeToTMDB = async (anime) => {
-  const query = anime.title.english || anime.title.romaji;
-  const results = await searchTMDB(query, 'tv'); // Anime is usually TV
-  return results[0] || null;
 };
