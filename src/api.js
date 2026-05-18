@@ -497,16 +497,16 @@ export const fetchHeroBanner = async () => {
 };
 
 // ─── UTILITY ─────────────────────────────────────────────────────────────────
-// Primary: 2embed (clean, minimal ads, TMDB ID native)
+// Primary: vidsrc.me (clean, TMDB ID native, no redirect popups)
 export const buildVidSrcUrl = (id, mediaType, season = 1, episode = 1) => {
-  if (mediaType === 'movie') return `https://www.2embed.cc/embed/${id}`;
-  return `https://www.2embed.cc/embedtv/${id}&s=${season}&e=${episode}`;
+  if (mediaType === 'movie') return `https://vidsrc.me/embed/movie?tmdb=${id}`;
+  return `https://vidsrc.me/embed/tv?tmdb=${id}&season=${season}&episode=${episode}`;
 };
 
 // Fallback: superembed (reliable, low ads)
 export const buildVidSrcAlt = (id, mediaType, season = 1, episode = 1) => {
-  if (mediaType === 'movie') return `https://multiembed.mov/?video_id=${id}&tmdb=1`;
-  return `https://multiembed.mov/?video_id=${id}&tmdb=1&s=${season}&e=${episode}`;
+  if (mediaType === 'movie') return `https://embed.smashystream.com/playere.php?tmdb=${id}`;
+  return `https://embed.smashystream.com/playere.php?tmdb=${id}&season=${season}&episode=${episode}`;
 };
 
 export const getTrailerKey = (videos) => {
